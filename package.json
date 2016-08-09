@@ -32,5 +32,8 @@
     "remarkable": "^1.6.2",
     "through2": "^2.0.1",
     "vinyl-source-stream": "^1.1.0"
+  },
+  "dependencies": {
+    "codemirror": "^5.17.0"
   }
 }

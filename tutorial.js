@@ -3,7 +3,7 @@ let CodeMirror = require( 'codemirror' ),
     picoModal  = require( 'picomodal'  ),
     textareas, buttons, playStart
 
-require( '../node_modules/codemirror/mode/javascript/javascript.js' )
+require( './node_modules/codemirror/mode/javascript/javascript.js' )
 
 textareas = document.querySelectorAll( 'textarea' )
 
