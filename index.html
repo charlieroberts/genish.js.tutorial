@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- Basic Page Needs
+  –––––––––––––––––––––––––––––––––––––––––––––––––– -->
+  <meta charset="utf-8">
+  <title>genish.js tutorial</title>
+  <meta name="description" content="">
+  <meta name="author" content="">
+
+  <!-- Mobile Specific Metas
+  –––––––––––––––––––––––––––––––––––––––––––––––––– -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- FONT
+  –––––––––––––––––––––––––––––––––––––––––––––––––– -->
+  <!--<link href="//fonts.googleapis.com/css?family=Raleway:400,300,600" rel="stylesheet" type="text/css">-->
+
+  <!-- CSS
+  –––––––––––––––––––––––––––––––––––––––––––––––––– -->
+  <link rel="stylesheet" href="css/normalize.css">
+  <link rel="stylesheet" href="css/skeleton.css">
+  <link rel="stylesheet" href="../node_modules/codemirror/lib/codemirror.css">
+  <link rel="stylesheet" href="./tutorial.css">
+
+  <!-- Favicon
+  –––––––––––––––––––––––––––––––––––––––––––––––––– -->
+  <link rel="icon" type="image/png" href="images/favicon.png">
+
+</head>
+
+<body>
+
+  <!-- Primary Page Layout
+  –––––––––––––––––––––––––––––––––––––––––––––––––– -->
+  <div class="container">
+    <div class="row">
+      <div class="four columns">
+        <nav>
+          <h1>genish.js tutorial</h1>
+          <ol id='menu'></ol>
+        </nav>
+        &nbsp;
+      </div>
+      <div class='one columns'>&nbsp;</div>
+      <div class="seven columns"> 
+        <p><code>genish.js</code> is basically a compiler; it takes JavaScript defining a synthesis algorithm and creates an optimized version of it. It uses many tricks to optimize, such as managing its own memory for faster de-referencing and baking data into the callback whenever possible to avoid de-referencing altogether. Most importantly, it is optimized for <em>per-sample</em> processing, enabling a variety of forms of synthesis that aren't possible using the audio API included in browsers. The major tradeoff with per-sample processing is efficiency, which is why an optimized library like <code>genish.js</code> becomes necessary.</p>
+<p>In the world of digital audio, audio signals are expected to contain a certain number of values per second; these values are often called <em>samples</em> and the number of samples per second contained in a signal is known as the <em>sampling frequency</em><sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup>. Most of our work in <code>genish.js</code> will be creating objects called <em>unit generators</em>, a term coined by Max Mathews for his language <em>Music V</em> <sup class="footnote-ref"><a href="#fn2" id="fnref2">[2]</a></sup>. In <code>genish.js</code> unit generators (aka ugens)will output samples one at a time at a rate equal to the sample frequency. By chaining unit generators together we can create complex synthesis objects.</p>
+<p>This tutorial handles some of the gruntwork of getting an audio callback in browser for you, and also provides a convenience method, <code>play()</code>, that automatically turns a graph of ugens into an audio callback and starts it playing. In this way it's similar to the <code>genish.js</code> playground](http://www.charlie-roberts.com/genish/playground/). Towards the end the tutorial will cover how to use <code>genish.js</code> outside the tutorial / playgournd in your own projects.</p>
+<h3><a id="start">A simple start: make a number get bigger with accum()</a></h3>
+<p>One of the simplest ugens in <code>genish.js</code> is the <em>accumulator</em>, or <code>accum()</code>; this ugen simply increments an internal value. <code>acuum</code> accepts two <em>inputs</em> that can be freely changed at audio-rate: the first is the increment amount, and the second is a flag that the internal value should be reset. We can test this in the <code>genish.js</code> playground as follows:</p>
+
+<textarea id='cm-15'>callback = gen.createCallback(
+  accum( .1, 0 )
+)
+
+// output values adjusted here for floating-point error
+flash( callback() ) // >>  0
+flash( callback() ) // >> .1
+flash( callback() ) // >> .2 etc.
+</textarea>
+<div style='text-align:right'><button class="button-primary" id='cm-15-button' noaudio>Run</button></div>
+<p>The <code>gen.createCallback</code> method accepts a ugen ( which may contain references to many other ugens... in this case we call it a <em>graph</em>, where each ugen is a <em>node</em>) and returns a function that can be executed. When we call that function above, we see a number that gradually increases by .1. However, if you execute the callback more than ten times, you'll notice that it wraps down to <code>0</code>. The <code>accum</code> ugen has <code>min</code> and <code>max</code> properties that can be set only on initialization<sup class="footnote-ref"><a href="#fn3" id="fnref3">[3]</a></sup>; by default these wrap the internally stored value to a range of {0,1}. To change these properties, we can pass a dictionary of properties as our third argument to <code>accum</code>.</p>
+
+<textarea id='cm-19'>callback = gen.createCallback(
+  accum( .75, 0, { min:-1, max:1 } )
+)
+
+// outputs values adjust for floating-point error
+flash( callback() ) // >>  -1
+flash( callback() ) // >> -.25
+flash( callback() ) // >>  .5
+flash( callback() ) // wraps to >> -.75
+</textarea>
+<div style='text-align:right'><button class="button-primary" id='cm-19-button' noaudio>Run</button></div>
+<h3><a id="noise">Making some noise</a></h3>
+<p>Synthesis algorithms producing musical sound typically create repeating (or <em>periodic</em>) signals; non-periodic signals often are perceived as noisy. The number of times per second that a given signal repeats determines its <em>frequency</em>, which roughly corresponds perceptually to the pitch of a sound. One type of unit generator that easily generates a repeating signal is our previously mentioned <em>accumulator</em>, which increments a value until it reaches a certain specified maximum, at which point the value loops back to its specified minimum and the process starts all over again. By default, accumulators in <code>genish.js</code> loop between {0,1}.</p>
+<p>Let's assume we want to create a unit generator running at 440 Hz, the traditional tuning frequency used by Western orchestras. If we want our accumulator to repeat moving between {0,1} 440 times per second, first we need to know how many samples per second our audio signal is operating at. We can access this using <code>gen.samplerate</code>. On most systems this will return a value of <code>44100</code>, the sampling-rate used for CD quality audio, but if you have an audio interface connected to your computer you might get a higher value.</p>
+<p>Now that we know the sampling rate and the frequency we want to use for our unit generator, we can easily figure out how much our accumulator should increment its internal value per sample: <code>440 / gen.samplerate</code>. In the <code>genish.js</code> playground we can create an accumulator and run it as follows:</p>
+
+<textarea id='cm-32'>play(
+  accum( 440 / gen.samplerate )
+)
+</textarea>
+<div style='text-align:right'>
+  <button class="button-primary" id='cm-32-buttonRun'>Run</button>
+  <button class="button-primary" id='cm-32-buttonStop'>Stop</button>
+</div>
+<p>With a typical sampling rate of 44100 Hz, our <code>accum</code> will increment ~0.009977 per sample (440 / 44100). Highlight the code and hit Ctrl+Enter to run it. The <code>play()</code> function is specific to the playground and accepts one argument, a unit generator that it will use to render audio samples to your computer's digital-to-analog converter (DAC). Let's replace our number with a variable, <code>frequency</code>.</p>
+
+<textarea id='cm-36'>frequency = 330
+play(
+  accum( frequency / gen.samplerate )
+)
+</textarea>
+<div style='text-align:right'>
+  <button class="button-primary" id='cm-36-buttonRun'>Run</button>
+  <button class="button-primary" id='cm-36-buttonStop'>Stop</button>
+</div>
+<p>Try changing the value of <code>frequency</code> and re-executing the code. Note that higher values result in higher pitches and vice-versa. Also note that whenever you re-run a call to <code>play()</code>, the existing audio is terminated and replaced with the output of the new unit generator that is created.</p>
+<p>It turns out that creating a line between two values and specifying its frequency is a pretty common task in audio synthesis. There's a dedicated unit generator for this, the <em>phasor</em>. The following two lines of code are almost equivalent in <code>genish.js</code>:</p>
+<pre><code class="language-javascript">ramp = accum( 440 / gen.samplerate )
+ramp = phasor( 440 )
+</code></pre>
+<p>The one significant difference is that, by default, <code>accum</code> outputs values in the range of {0,1} while <code>phasor</code> outputs a full-range audio signal of {-1,1}. <code>phasor</code> is basically a sawtooth oscillator, one of the most common oscillators used in subtractive synthesis. We can also easily generate a &quot;reverse sawtooth&quot;:</p>
+
+<textarea id='cm-47'>play( mul( -1, phasor( 440 ) )
+</textarea>
+<div style='text-align:right'>
+  <button class="button-primary" id='cm-47-buttonRun'>Run</button>
+  <button class="button-primary" id='cm-47-buttonStop'>Stop</button>
+</div>
+<p>An oscillator signal in reverse sounds more or less identical to their forward counterpart when driven at higher frequencies; however, they can produce dramatic differences when used to modulate other oscillators at lower frequencies, as we'll see shortly.</p>
+<h3><a id='sines'>Sine waves</a></h3>
+<p>While the humble ramps created using <code>accum</code> are very important in synthesis, nothing is more important than sinewaves. They form the basis for many forms of synthesis (classical FM and additive to name two) and are also important in audio analysis. Part of their power comes from the fact that, ideally, they contain only one fundamental frequency. In our previous sawtooth example, the base frequency was present but so were many, many overtones... multiples of the oscillators base frequency that give the sawtooth oscillator its distinctly brassy sound. Sine osillcators sound pure in comparison.</p>
+<p>Creating a sine oscillator using genish is simple:</p>
+
+<textarea id='cm-60'>play( cycle( 440 ) )
+</textarea>
+<div style='text-align:right'>
+  <button class="button-primary" id='cm-60-buttonRun'>Run</button>
+  <button class="button-primary" id='cm-60-buttonStop'>Stop</button>
+</div>
+<p>The <code>cycle</code> ugen creates a sine wave by looking up values in a table (included in genish.js) and interpolating between them. By pre-calculating and storing a single cycle of a sinewave, we can avoid having to calculate waveforms in realtime and simply change the speed that we read the table to vary its fundamental frequency (this is commonly known as <em>wavetable</em> synthesis). However, if we know a little bit about the formula for a sinewave<sup class="footnote-ref"><a href="#fn4" id="fnref4">[4]</a></sup>, we can also create one using ugens found in genish.js:</p>
+
+<textarea id='cm-64'>play( 
+  sin( 
+    mul( phasor( 440 ), Math.PI * 2 )
+  )
+)
+</textarea>
+<div style='text-align:right'>
+  <button class="button-primary" id='cm-64-buttonRun'>Run</button>
+  <button class="button-primary" id='cm-64-buttonStop'>Stop</button>
+</div>
+<p>The <code>sin()</code> ugen simply calculates the trigonometric sin of a number using JavaScript's built-in <code>Math.sin</code> function. In this case we multiply a phasor by 2PI, calculate the sin of the result, and we've created a sine oscillator from &quot;scratch&quot; in gen. But since it's faster to use the lookup table of <code>cycle</code> (not to mention much quicker to type) we'll use that for the rest of the examples.</p>
+<h3><a id='modulation'>Modulation and interaction (aka make a &quot;theremin&quot;)</a></h3>
+<p>Let's do some basic modulation using sinewaves. <em>Modulation</em> can be simply thought of as using one signal to change the output of another. In this case we'll perform <em>frequency modulation</em> to create <em>vibrato</em> in an oscillator. Vibrato is regular fluctuations in the frequency of a sound (often heard in singing) in contrast to <em>tremolo</em>, which is fluctuations in loudness</p>
+<p>In the example below, we'll first create a sine oscillator with a range of {-20,20} by wrapping a call to <code>cycle</code> in a <code>mul</code>. This will be our modulator; we'll use it to fluctuate our carrier frequency by +/- 20 Hz. Then we'll create a second <code>cycle</code> ugen that will add our modulation to a base frequency of 440 Hz, creating our vibrato.</p>
+
+<textarea id='cm-77'>modulator = mul( cycle( 4 ), 20 )
+carrier = cycle( add( 440, modulator ) )
+
+play( carrier )
+</textarea>
+<div style='text-align:right'>
+  <button class="button-primary" id='cm-77-buttonRun'>Run</button>
+  <button class="button-primary" id='cm-77-buttonStop'>Stop</button>
+</div>
+<p>OK, great. Now let's add some interaction so that we can control both the base frequency and the depth of the modulation. We'll do this using the <code>param()</code> ugen, which enables you to directly manipulate a number stored in the memory of any callbacks generated by genish by accessing a <code>.value</code> property. In the example below, <code>genish</code> only requires a single <code>Float32</code> of memory, which will wind up being indexed at <code>gen.memory.heap[0]</code>; if we had other ugens running these would be using memory indexed at other parts of the heap. Having a single Float32Array used for memory during audio callbacks is one of the big performance wins of genish.js.</p>
+
+<textarea id='cm-81'>myparam = param( 440 )
+callback = gen.createCallback( myparam )
+
+flash( gen.memory.heap[0] ) // >> 440
+myparam.value = 880
+flash( gen.memory.heap[0] ) // >> 880
+</textarea>
+<div style='text-align:right'><button class="button-primary" id='cm-81-button' noaudio>Run</button></div>
+<p>The important element of <code>param</code> is that it removes the need for you, the developer, to worry about the location of the memory in the heap. You simply change the <code>.value</code> property and this is done fo ryou behind the scenes.</p>
+<p>With that said, we can setup some interaction that simply looks at the position of our mouse cursor:</p>
+
+<textarea id='cm-88'>carrierFrequency = param( 440 )
+modulationDepth  = param( 15 )
+
+modulator = mul( cycle(4), modulationDepth )
+modulatedFrequency = add( carrierFrequency, modulator )
+
+play( cycle( modulatedFrequency ) )
+
+window.onmousemove = function( e ) { 
+  let percentY = e.clientY / window.innerHeight,
+      percentX = e.clientX / window.innerWidth
+  
+  // get a frequency range of {110,990}
+  carrierFrequency.value = 990 - (percentY * 880)
+  modulationDepth.value  = percentX * 100
+}
+</textarea>
+<div style='text-align:right'>
+  <button class="button-primary" id='cm-88-buttonRun'>Run</button>
+  <button class="button-primary" id='cm-88-buttonStop'>Stop</button>
+</div>
+<h3><a id='modulation'>FM (Frequency Modulation) Synthesis</a></h3>
+<p>When we use frequency modulation with high-frequency, high-amplitude signals interesting sonic results can occur. John Chowning codified how a range of musically complex sounds could be created with just a pair of sine oscillators. His technique, named FM synthesis, was responsible for the best-selling hardware synthesizer of all time, the Yamaha DX-7, heard on countless records in the 80s and beyond.</p>
+<p>There are a couple of simple tricks in FM synthesis. When describing them, the term <em>carrier</em> refers to a oscillator that uses a base frequency corresponding to the pitch we want to generate, while the term <em>modulator</em> refers to an oscillator that is modulating the carrier in a way that the pitch (typically) remains the same, but creates interesting timbral results.</p>
+<ol>
+<li><p>A fixed ratio should govern the relationship between carrier and modulation frequencies; let's call this the <em>carrier-to-modulation ratio</em> or <em>c2m</em>. For example, if our c2m is <code>2</code> and our carrier is using a base frequency of <code>440 Hz</code>, our modulator should then have a frequency of 880Hz. Maintaining this frequency relationship is what provides a consistent timbre to the sounds genered by FM synthesis across pitches.</p></li>
+<li><p>The amplitude of the modulator is also governed by the frequency of the carrier using a ratio named the <em>index</em>. This is another key to FM synthesis: using modulators with extremely high amplitudes that windup creating (potentially) large number of sideband frequencies when modulating the carrier. If the index of our FM recipe is <code>4</code>, and our carrier frequency is again <code>440</code>, then the amplitude of the modulator winds up being <code>1760</code> (much louder than 11).</p></li>
+</ol>
+<p>Given these two simple rules, let's make a simple gong sound in genish.js. A classic FM gong recipe is to use a c2m value of <code>1.4</code> and a index value of <code>.95</code>. We'll need to create two cycle objects, set the frequency and amplitude of the modulator to track the frequency of the carrier, and then apply an amplitude envelope to get a decaying gong sound.</p>
+
+<textarea id='cm-113'>baseFrequency = 80
+c2m = 1.4
+index = .95
+
+// create our oscillator for modulation
+modulator = cycle( mul( baseFrequency, c2m ) )
+
+// scale amplitude based on index value, re-assign
+modulator = mul( modulator, mul( baseFrequency, index ) )
+
+// create carrier oscillator and modulate frequency
+carrier = cycle( add( baseFrequency, modulator ) )
+
+// create an exponential decay lasting eight seconds
+env = decay( gen.samplerate * 8 )
+
+// multiply carrier output by envelope and play
+play( mul( carrier, env ) )
+</textarea>
+<div style='text-align:right'>
+  <button class="button-primary" id='cm-113-buttonRun'>Run</button>
+  <button class="button-primary" id='cm-113-buttonStop'>Stop</button>
+</div>
+<h3><a id='modulation'>Single-Sample Feedback</a></h3>
+<p>One of the advantages of genish.js over other JavaScript libraries is that you can easily perform single-sample feedback. This means you can, for example, calculate the output of a <code>cycle</code> ugen, and then use that output to modulate its frequency when the next sample is calculated. This is in contrast to <em>block-based processing</em>, where each ugen processes many samples at a time for efficiency reasons, eliminating the ability to render an entire audio graph on a sample-by-sample basis.</p>
+<p>Let's take a look at using feedback to modulate <code>cycle</code>. We will use the <em>single-sample delay</em> ugen, or <code>ssd</code>, to store each sample and then report it back. In a way the <code>ssd</code> ugen is actually two ugens wrapped in one: the <code>ssd.in()</code> ugen records a sample while the <code>ssd.out</code> ugen returns the last recorded sample. With that in mind, here's some simple feedback:</p>
+
+<textarea id='cm-123'>// initialize history to 0
+sample = ssd( 0 )
+
+// use last sample to drive modulation
+modulation = mul( sample.out, 300 )
+
+// base cycle frequency on modulation
+osc = cycle( add( 440, modulation ) )
+
+// record cycle output for next use in sample
+sample.in( osc )
+
+play( osc )
+</textarea>
+<div style='text-align:right'>
+  <button class="button-primary" id='cm-123-buttonRun'>Run</button>
+  <button class="button-primary" id='cm-123-buttonStop'>Stop</button>
+</div>
+<p>The results in the above example aren't particularly exciting, but you'll probably here that the resulting timbre is more complex than that of a simple sine oscillator. However, feedback is a critical component of FM synthesis. If you look at a chart showing <a href="https://www.yamahasynth.com/forum?controller=attachment&amp;task=displayFile&amp;tmpl=component&amp;id=376">the thirty-two routing possibilities of the DX7</a>(called <em>algorithms</em> by Yamaha) you'll note that every one contains a single-sample feedback path.</p>
+<h3><a id='delayLine'>Creating a delay line</a></h3>
+<p>The ability to single-sample feedback means you can create complicated feedback networks using genish.js. The core component of a feedback network is the <em>delay line</em>, which uses a <code>delay</code> ugen to delay an input signal by an specified number of samples; the output of the delay can then be feed back into itself to create a series of echos. In the example below, we'll create a series of random pitches played at random times using the <code>noise()</code> and <code>sah()</code> ugens. <code>noise</code> simply returns a random number between {0,1} using JavaScripts <code>Math.random</code> function. The <code>sah</code> ugen (which stands for sample-and-hold) accepts three arguments: first, an input signal; second, a control signal that can trigger sampling; and third, a threshold that the control signal must cross for sampling to occur. So, our first line will be:</p>
+<p><code>frequencyControl = sah( add( 220, mul( noise(),880 ) ), noise(), .99995 )</code></p>
+<p>... which basically translates to 'pick a new frequency between 220 and 1100 every time a noise signal goes above .99995'.</p>
+
+<textarea id='cm-139'>// use noise with sample-and-hold to output random frequencies with random timing
+frequencyControl = sah( add( 220, mul( noise(),880 ) ), noise(), .99995 )
+ 
+// create an oscillator and scale its output
+osc = mul( cycle( frequencyControl ), .025 )
+ 
+// create a single-sample delay
+feedback = ssd()
+ 
+// feed our oscillator and our ssd into a delay with a delay time of 11025 samples
+echo = delay( add( osc, feedback.out ), 11025 )
+
+// control feedback by attenuating echoes
+feedback.in( mul( echo, .5 ) )
+ 
+play( echo )
+</textarea>
+<div style='text-align:right'>
+  <button class="button-primary" id='cm-139-buttonRun'>Run</button>
+  <button class="button-primary" id='cm-139-buttonStop'>Stop</button>
+</div>
+<hr class="footnotes-sep">
+<section class="footnotes">
+<ol class="footnotes-list">
+<li id="fn1"  class="footnote-item"><p>For more information on sampling frequency, see <a href="http://jackschaedler.github.io/circles-sines-signals/index.html">this incredibly excellent tutorial.</a>. <a href="#fnref1" class="footnote-backref">↩</a></p>
+</li>
+<li id="fn2"  class="footnote-item"><p>http://cs.au.dk/~dsound/DigitalAudio.dir/Papers/MaxMathews.pdf <a href="#fnref2" class="footnote-backref">↩</a></p>
+</li>
+<li id="fn3"  class="footnote-item"><p>For a ugen supporting audio-rate modulation of <code>min</code> and <code>max</code> properties, see <a href="http://www.charlie-roberts.com/genish/docs/index.html#integrator-counter">the counter ugen</a> <a href="#fnref3" class="footnote-backref">↩</a></p>
+</li>
+<li id="fn4"  class="footnote-item"><p>All you want to know about sinewaves (well, maybe...), <a href="http://jackschaedler.github.io/circles-sines-signals/sincos.html">clearly explained with great visuals</a>. <a href="#fnref4" class="footnote-backref">↩</a></p>
+</li>
+</ol>
+</section>
+
+      </div>
+      <!--<div class="one columns">&nbsp;</div>-->
+      <!--<div class="five columns" id='console'>-->
+      <!--  <h5>console</h5><button class='u-pull-right'>clear</button>-->
+      <!--  <div id="console_data">-->
+      <!--    <ul id='logs'></ul> -->
+      <!--  </div>-->
+      <!--</div>-->
+    </div>
+  </div>
+
+<!-- End Document
+  –––––––––––––––––––––––––––––––––––––––––––––––––– -->
+</body>
+
+<script src='index.js'></script>
+
+</html>

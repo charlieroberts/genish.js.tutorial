@@ -1,0 +1,33 @@
+.CodeMirror { 
+  height:auto;
+  margin-bottom:1em;
+  border:1px solid #ccc
+} 
+
+#console {
+  position:fixed;
+  padding: 1em;
+  border: 1px solid #ccc;
+}
+
+#console h5, #console button { display:inline }
+#console h5 { margin-right: 2em }
+
+#console_data { font-family:monospace; }
+
+.flashed {
+  position:absolute;
+  display:block;
+  width:20%;
+  height:50px;
+  top:40%;
+  margin-left:40%;
+  margin-right:40%;
+  border:1px solid #ccc;
+  background:#eee;
+  text-align:center;
+  padding:.5em;
+}
+
+h3 a { text-decoration:none; color:inherit }
+nav{ position:fixed; width:20%; }
