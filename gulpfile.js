@@ -8,9 +8,9 @@ var gulp = require('gulp'),
     mdRender   = require( './processMarkdown.gulp.js' )
 
 gulp.task( 'js', function() {
-  browserify({ debug:true, standalone:'tutorial' })
-    .transform( babelify, { presets:['es2015'] })
+  browserify({ debug:true, standalone:'tutorial', minified:true, comments:false })
     .require( './tutorial.js', { entry: true } ) 
+    .transform( babelify, { presets:['es2015'] })
     .bundle()
     .pipe( source('index.js') )
     .pipe( gulp.dest('./') )
@@ -32,7 +32,7 @@ gulp.task( 'renderMD', ()=> {
     }) )
 })
 
-gulp.task( 'test', ['js'], ()=> {
+gulp.task( 'test', gulp.series('js'), ()=> {
   return gulp.src('tests/gen.tests.js', {read:false})
     .pipe( mocha({ reporter:'nyan' }) ) // spec, min, nyan, list
 })
@@ -47,4 +47,4 @@ gulp.task( 'watchMarkdown', function() {
   gulp.watch( './tutoral.md', ['renderMD'] )
 })
 
-gulp.task( 'default', ['js'] )
+gulp.task( 'default', gulp.series('js') )
