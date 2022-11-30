@@ -8,9 +8,9 @@ var gulp = require('gulp'),
     mdRender   = require( './processMarkdown.gulp.js' )
 
 gulp.task( 'js', function() {
-  browserify({ debug:true, standalone:'tutorial', minified:true, comments:false })
-    .require( './tutorial.js', { entry: true } ) 
-    .transform( babelify, { presets:['es2015'] })
+  const bundle = browserify( './tutorial.js', { debug:false, standalone:'tutorial', minified:false, bare:true })
+    //.require( './tutorial.js', { entry: true } ) 
+    //.transform( babelify, { presets:['es2015'] })
     .bundle()
     .pipe( source('index.js') )
     .pipe( gulp.dest('./') )
@@ -20,10 +20,12 @@ gulp.task( 'js', function() {
         onLast:true
       }) 
     )
+
+  return bundle
 })
 
 gulp.task( 'renderMD', ()=> {
-  gulp.src( './tutorial.md' )
+  return gulp.src( './tutorial.md' )
     .pipe( mdRender() )
     .pipe( source( 'index.html' ) )
     .pipe( gulp.dest( './' ) )

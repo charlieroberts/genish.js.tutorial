@@ -4,7 +4,7 @@ let CodeMirror = require( 'codemirror' ),
     //Babel = require( 'babel-standalone' ),
     textareas, buttons, playStart
 
-require( 'babel-polyfill' )  
+//require( 'babel-polyfill' )  
 require( './node_modules/codemirror/mode/javascript/javascript.js' )
 
 textareas = document.querySelectorAll( 'textarea' )
@@ -47,7 +47,7 @@ for( let button of buttons ) {
       gen.mode = ''
       playStart( txtAreaID )
       gen.mode = 'worklet'
-    } )
+    })
   }
 }
 
@@ -66,8 +66,6 @@ for( let header of sectionHeaders ) {
 
   li.appendChild( a )
   menu.appendChild( li )
-
-  
 }
 // globalize so ugens can be called from tutorial code editors 
 genish.export( window )
